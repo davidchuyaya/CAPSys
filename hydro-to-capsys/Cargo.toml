@@ -1,0 +1,30 @@
+[package]
+name = "hydro_to_capsys"
+version = "0.1.0"
+edition = "2024"
+description = "Converts a Hydro IR + ILPAnalysisInputs into the CAPSys operator-graph JSON format"
+license = "Apache-2.0"
+
+[dependencies]
+hydro_optimize = { path = "../../hydro-optimize/hydro_optimize" }
+hydro_lang = { version = "0.16.0", git = "https://github.com/davidchuyaya/hydroflow.git", branch = "fix_network_pull_count", features = ["deploy"] }
+serde = { version = "1.0.197", features = ["derive"] }
+serde_json = "1.0"
+
+[dev-dependencies]
+hydro_lang = { version = "0.16.0", git = "https://github.com/davidchuyaya/hydroflow.git", branch = "fix_network_pull_count", features = ["deploy", "viz"] }
+hydro_test = { version = "0.0.0", git = "https://github.com/davidchuyaya/hydroflow.git", branch = "fix_network_pull_count" }
+stageleft = "0.13.5"
+
+# Mirror the workspace patches in hydro-optimize so that transitive deps
+# resolve to the exact same sources. If you want to use a local hydro
+# checkout on Mac, uncomment and adjust paths below.
+#
+# [patch."https://github.com/davidchuyaya/hydroflow.git"]
+# hydro_lang = { path = "/Users/chudc/Desktop/hydro/hydro_lang" }
+# hydro_std = { path = "/Users/chudc/Desktop/hydro/hydro_std" }
+# hydro_test = { path = "/Users/chudc/Desktop/hydro/hydro_test" }
+# dfir_lang = { path = "/Users/chudc/Desktop/hydro/dfir_lang" }
+# hydro_build_utils = { path = "/Users/chudc/Desktop/hydro/hydro_build_utils" }
+# hydro_deploy = { path = "/Users/chudc/Desktop/hydro/hydro_deploy/core" }
+# include_mdtests = { path = "/Users/chudc/Desktop/hydro/include_mdtests" }

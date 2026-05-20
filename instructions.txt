@@ -1,0 +1,99 @@
+CAPSys Adaptation Notes
+========================
+
+Goal: Use CAPS as a baseline optimizer for placing operators on machines to balance
+resource usage, without fixed slots per machine or fixed machine count.
+
+Key Insight: Slots are just a counting abstraction (no resource isolation). Set SlotNum
+high (e.g., 100-1000) to simulate "no slot limit." For variable machine count, set
+WorkerNum to max possible and allow some machines to end up empty. Symmetry-breaking
+optimization still works as long as machines are homogeneous.
+
+ALGORITHM OVERVIEW
+------------------
+CAPS = DFS + branch-and-bound over 3 resource dimensions (compute, state, network).
+- Outer search: iterates operators one at a time
+- Inner search: distributes each operator's tasks across workers, pruning when any
+  dimension exceeds a threshold
+- Autotune: binary-searches for tightest valid thresholds
+- Pareto selection: keeps non-dominated plans across 3 dimensions
+- Main scalability trick: symmetry breaking (identical workers are interchangeable)
+
+CORE FILES (all under scripts/caps-go/)
+----------------------------------------
+Algorithm:
+  caps_single/structs.go   - Data types: Resource, Operator, Node, Plan, CurPlacement
+  caps_single/caps.go      - Single-threaded DFS (OuterSearch, InnerSearch)
+  caps_single/utils.go     - Threshold calc, network cost, plan generation, Pareto filter
+
+  caps_multi/structs.go    - Same types + ParameterCAPS, ThreadPool, Task
+  caps_multi/caps.go       - Multi-threaded DFS with work-stealing; RunCAPS() entry point
+  caps_multi/utils.go      - All utils + GeneratePlacementConfigFile, thread pool mgmt
+  caps_multi/autotune.go   - Auto_tuning(): Phase1 binary search, Phase2 relaxation
+
+Entry points / examples:
+  cmd/manual_tune/main.go      - Simplest example: set params, call autotune
+  cmd/eval_only_caps/main.go   - Benchmark harness: varies workers/slots, measures runtime
+  cmd/eval_autotune/main.go    - Autotune benchmark harness
+
+Example input:
+  json/singlequery_cloudlab/Q3.json
+
+INPUT FORMAT
+------------
+JSON array of operators:
+[
+  {
+    "id": "a",                    // single char, up to 255 operators
+    "name": "MySink",             // human-readable, used in output
+    "parallelism": 4,             // number of task instances to place
+    "compute": 800.8,             // per-task resource cost (arbitrary units)
+    "state": 0.0,                 // per-task resource cost
+    "network": 0.05,              // per-task resource cost
+    "outboundtype": "REBALANCE",  // "FORWARD", "REBALANCE", "HASH", or "" for sinks
+    "downNode": ["b"],            // downstream operator IDs
+    "upNode": ["c"]               // upstream operator IDs
+  }
+]
+
+Map your resource dimensions onto compute/state/network (they're just 3 floats).
+If you need more dimensions, extend the Resource struct in structs.go.
+
+KEY PARAMETERS (ParameterCAPS struct)
+--------------------------------------
+WorkerNum:            max number of machines (set to max, allow empties)
+SlotNum:              set high (100+) to simulate no slot limit
+Threshold_ratio:      {Compute, State, Network} ratios in [0,1], or use autotune
+ExitOnFirstPlan:      true to stop at first valid plan
+ExitOnTimeOut:        true + Timeout duration
+ThreadNum:            number of search threads
+Outer_dfs_order:      "compute" (sorts operators by ascending compute cost)
+
+Output control:
+  CalculateParetoPlans:      true to filter to Pareto-optimal plans
+  SelectPlanAndWriteToFile:  true to write placement config file
+  IpList:                    one label per WorkerNum (machine names/IPs)
+  Config_file_name:          output filename
+
+OUTPUT FORMAT
+-------------
+Config file (one line per task instance):
+  OperatorName; machine_label
+  OperatorName; machine_label
+  ...
+
+Stdout also prints per-node task lists and plan cost vector.
+
+The Go code is standalone — no Flink connection. The Flink integration is in the
+Python scripts (runplacement.py, deployflink.py) which can be ignored.
+
+AUTOTUNE PARAMETERS (ParameterAutoTune struct)
+-----------------------------------------------
+ComputeCeiling, StateCeiling, NetworkCeiling: starting search range upper bounds
+Granularity:          binary search step size (e.g., 0.01)
+AutoTuneRate:         relaxation rate in Phase 2 (e.g., 0.2)
+CeilingRelaxTimeout:  timeout for ceiling relaxation phase
+Phase1Timeout:        timeout per binary search attempt
+Phase2Timeout:        timeout for final plan search
+NumRepeatSearch:      retries per threshold config
+NumRepeatResult:      retries for final result
